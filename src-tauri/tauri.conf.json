@@ -5,9 +5,7 @@
   "identifier": "com.smbfoldermapper",
 
   "build": {
-    "frontendDist": "../src",
-    "beforeDevCommand": "",
-    "beforeBuildCommand": ""
+    "frontendDist": "../src"
   },
 
   "app": {
@@ -17,17 +15,9 @@
         "width": 700,
         "height": 520,
         "resizable": true,
-        "fullscreen": false,
-        "minWidth": 600,
-        "minHeight": 420
+        "fullscreen": false
       }
-    ],
-    "security": {
-      "csp": null,
-      "capabilities": [
-        "default"
-      ]
-    }
+    ]
   },
 
   "bundle": {
