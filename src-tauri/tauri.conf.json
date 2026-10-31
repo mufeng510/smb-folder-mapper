@@ -6,7 +6,6 @@
 
   "build": {
     "frontendDist": "../src",
-    "builder": "none",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },
