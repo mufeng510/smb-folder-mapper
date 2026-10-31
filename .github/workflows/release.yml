@@ -22,7 +22,7 @@ jobs:
           toolchain: stable
 
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --version 2 --force
+        run: cargo install tauri-cli --force
 
       - name: Build Tauri application
         run: cargo tauri build --verbose
