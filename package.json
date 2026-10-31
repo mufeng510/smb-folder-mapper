@@ -1,0 +1,13 @@
+{
+  "name": "smb-folder-mapper",
+  "version": "0.1.0",
+  "description": "轻量级 SMB 文件夹目录符号链接映射工具（Tauri v2 + 原生 HTML/JS）",
+  "private": true,
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
