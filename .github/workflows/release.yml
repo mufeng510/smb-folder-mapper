@@ -29,9 +29,6 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --force
 
-      - name: Init Tauri project
-        run: cargo tauri init --force
-
       - name: Build Tauri application
         run: cargo tauri build --verbose
 
