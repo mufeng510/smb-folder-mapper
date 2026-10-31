@@ -30,7 +30,7 @@ jobs:
         run: cargo install tauri-cli --force
 
       - name: Build Tauri application
-        run: cargo tauri build --verbose
+        run: cargo build --release --verbose
 
       - name: Rename binary to smb-folder-mapper.exe
         run: |
