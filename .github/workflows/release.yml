@@ -32,6 +32,12 @@ jobs:
       - name: Build Tauri application
         run: cargo tauri build --verbose
 
+      - name: Rename binary to smb-folder-mapper.exe
+        run: |
+          if (Test-Path "src-tauri/target/release/app.exe") {
+            Rename-Item "src-tauri/target/release/app.exe" "src-tauri/target/release/smb-folder-mapper.exe"
+          }
+
       - name: Upload standalone .exe artifact
         uses: actions/upload-artifact@v4
         with:
