@@ -171,7 +171,7 @@ fn save_credential(target: String, username: String, password: String) -> Result
     let mut cred = CREDENTIALW {
         flags: 0,
         type_: CRED_TYPE_GENERIC,
-        target_name: target_w.as_ptr(),
+        target_name: target_w.as_ptr() as *mut u16,
         comment: ptr::null_mut(),
         last_written: FILETIME {
             dw_low_date_time: 0,
