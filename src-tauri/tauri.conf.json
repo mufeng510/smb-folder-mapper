@@ -25,10 +25,11 @@
       "capabilities": [
         "default"
       ]
-    },
-    "plugins": {
-      "dialog": {}
     }
+  },
+
+  "plugins": {
+    "dialog": {}
   },
 
   "bundle": {
