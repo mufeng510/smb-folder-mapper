@@ -1,4 +1,4 @@
-import { invoke, open } from '@tauri-apps/api';
+import { invoke } from '@tauri-apps/api';
 
 const $ = (id) => document.getElementById(id);
 
@@ -10,6 +10,7 @@ const chkSaveCred = $('chkSaveCred');
 const btnBrowse = $('btnBrowse');
 const btnMount = $('btnMount');
 const btnUnmount = $('btnUnmount');
+const folderInput = $('folderInput');
 const status = $('status');
 
 function show(msg, kind) {
@@ -52,22 +53,20 @@ async function checkLink(lp) {
   }
 }
 
-async function pickFolder() {
-  try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      defaultPath: '',
-    });
-    if (selected === null || selected === '') return;
-    const path = Array.isArray(selected) ? selected[0] : selected;
-    localPath.value = path;
-    await checkLink(path);
-    show('', 'ok');
-  } catch (e) {
-    show('打开文件夹对话框失败：' + String(e), 'err');
-  }
+function pickFolder() {
+  folderInput.click();
 }
+
+folderInput.addEventListener('change', (e) => {
+  const path = e.target.files?.[0]?.path;
+  if (path) {
+    localPath.value = path;
+    checkLink(path);
+    show('', 'ok');
+  }
+  // 重置 input 以便可以再次选择同一文件夹
+  e.target.value = '';
+});
 
 btnBrowse.addEventListener('click', pickFolder);
 

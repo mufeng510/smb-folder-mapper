@@ -28,10 +28,6 @@
     }
   },
 
-  "plugins": {
-    "dialog": {}
-  },
-
   "bundle": {
     "active": false
   }
