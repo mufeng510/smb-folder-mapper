@@ -9,6 +9,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             mount,
             unmount,
+            check_link,
             save_credential,
             delete_credential,
         ])
@@ -116,6 +117,31 @@ fn unmount(local_path: String) -> Result<String, String> {
     std::fs::remove_dir(local)
         .map(|_| format!("已卸载：{}", local_path))
         .map_err(|e| format!("卸载失败：{}", e))
+}
+
+/* -------------------------------------------------------------------------- */
+/*  检查本地路径是否已是符号链接，返回链接指向的目标                          */
+/* -------------------------------------------------------------------------- */
+#[tauri::command]
+fn check_link(local_path: String) -> Result<Option<String>, String> {
+    let local = std::path::Path::new(&local_path);
+
+    if !local.exists() {
+        return Ok(None);
+    }
+
+    let metadata = std::fs::symlink_metadata(local)
+        .map_err(|e| format!("无法读取元数据：{}", e))?;
+
+    if !metadata.file_type().is_symlink() {
+        return Ok(None);
+    }
+
+    // 读取符号链接指向的目标
+    match std::fs::read_link(local) {
+        Ok(target) => Ok(Some(target.display().to_string())),
+        Err(e) => Err(format!("无法读取符号链接目标：{}", e)),
+    }
 }
 
 /* -------------------------------------------------------------------------- */

@@ -19,6 +19,39 @@ function show(msg, kind) {
   console.log(`[${kind}]`, msg);
 }
 
+function setButtons(isLinked) {
+  btnMount.disabled = isLinked;
+  btnUnmount.disabled = !isLinked;
+  if (isLinked) {
+    btnMount.textContent = '已挂载（可卸载）';
+    btnMount.classList.remove('primary');
+  } else {
+    btnMount.textContent = '挂载 / 创建链接';
+    btnMount.classList.add('primary');
+  }
+}
+
+async function checkLink(lp) {
+  if (!lp) {
+    setButtons(false);
+    show('', 'ok');
+    return;
+  }
+  try {
+    const target = await invoke('check_link', { localPath: lp });
+    if (target) {
+      setButtons(true);
+      show(`当前已是符号链接，指向：${target}`, 'ok');
+    } else {
+      setButtons(false);
+      show('', 'ok');
+    }
+  } catch (e) {
+    setButtons(false);
+    show('检查链接状态失败：' + String(e), 'err');
+  }
+}
+
 async function pickFolder() {
   try {
     const selected = await open({
@@ -29,6 +62,7 @@ async function pickFolder() {
     if (selected === null || selected === '') return;
     const path = Array.isArray(selected) ? selected[0] : selected;
     localPath.value = path;
+    await checkLink(path);
     show('', 'ok');
   } catch (e) {
     show('打开文件夹对话框失败：' + String(e), 'err');
@@ -54,6 +88,7 @@ btnMount.addEventListener('click', async () => {
       password: credPass.value || null,
     });
     show('挂载成功：' + result, 'ok');
+    await checkLink(lp);
   } catch (e) {
     show('挂载失败：' + String(e), 'err');
   } finally {
@@ -70,6 +105,8 @@ btnUnmount.addEventListener('click', async () => {
   try {
     const result = await invoke('unmount', { localPath: lp });
     show('卸载成功：' + result, 'ok');
+    setButtons(false);
+    show('', 'ok');
   } catch (e) {
     show('卸载失败：' + String(e), 'err');
   } finally {
@@ -77,7 +114,17 @@ btnUnmount.addEventListener('click', async () => {
   }
 });
 
-// 输入变化时清空状态提示
-[localPath, uncPath, credUser, credPass].forEach((el) => {
-  el.addEventListener('input', () => show('', 'ok'));
+// 输入变化时自动检查本地路径是否已是链接
+let debounceTimer;
+localPath.addEventListener('input', () => {
+  show('', 'ok');
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    checkLink(localPath.value.trim());
+  }, 300);
+});
+
+// 页面加载时检查当前本地路径状态
+window.addEventListener('DOMContentLoaded', () => {
+  checkLink(localPath.value.trim());
 });
