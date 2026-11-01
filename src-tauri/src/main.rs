@@ -1,8 +1,49 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use serde::{Deserialize, Serialize};
 use std::ffi::{c_void, OsStr};
+use std::fs;
 use std::os::windows::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::ptr;
+
+fn app_data_dir() -> Result<PathBuf, String> {
+    let appdata = std::env::var("APPDATA").map_err(|e| format!("无法获取 APPDATA：{}", e))?;
+    let dir = Path::new(&appdata).join("SMB Folder Mapper");
+    fs::create_dir_all(&dir).map_err(|e| format!("无法创建应用数据目录：{}", e))?;
+    Ok(dir)
+}
+
+fn links_file_path() -> Result<PathBuf, String> {
+    Ok(app_data_dir()?.join("links.json"))
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct LinkRecord {
+    local_path: String,
+    unc_path: String,
+}
+
+fn load_links() -> Result<Vec<LinkRecord>, String> {
+    let path = links_file_path()?;
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("无法读取链接记录文件：{}", e))?;
+    if content.trim().is_empty() {
+        return Ok(vec![]);
+    }
+    serde_json::from_str::<Vec<LinkRecord>>(&content)
+        .map_err(|e| format!("解析链接记录失败：{}", e))
+}
+
+fn save_links(links: &[LinkRecord]) -> Result<(), String> {
+    let path = links_file_path()?;
+    let content = serde_json::to_string_pretty(links)
+        .map_err(|e| format!("序列化链接记录失败：{}", e))?;
+    fs::write(&path, content).map_err(|e| format!("无法写入链接记录文件：{}", e))
+}
 
 fn main() {
     tauri::Builder::default()
@@ -10,6 +51,8 @@ fn main() {
             mount,
             unmount,
             check_link,
+            get_links,
+            remove_link,
             save_credential,
             delete_credential,
         ])
@@ -37,11 +80,11 @@ fn mount(
         }
     }
 
-    let local = std::path::Path::new(&local_path);
+    let local = Path::new(&local_path);
 
     // 校验本地路径
     if local.exists() {
-        let metadata = std::fs::symlink_metadata(local)
+        let metadata = fs::symlink_metadata(local)
             .map_err(|e| format!("无法读取本地路径元数据：{}", e))?;
 
         if metadata.file_type().is_symlink() {
@@ -50,7 +93,7 @@ fn mount(
 
         if metadata.is_dir() {
             // 必须为空文件夹；清空后再建立链接
-            let mut entries = std::fs::read_dir(local)
+            let mut entries = fs::read_dir(local)
                 .map_err(|e| format!("无法读取本地文件夹：{}", e))?;
             if entries.next().is_some() {
                 return Err(format!(
@@ -58,7 +101,7 @@ fn mount(
                     local_path
                 ));
             }
-            std::fs::remove_dir(local).map_err(|e| format!("无法清空本地文件夹：{}", e))?;
+            fs::remove_dir(local).map_err(|e| format!("无法清空本地文件夹：{}", e))?;
         } else {
             return Err(format!("{} 已存在且不是文件夹", local_path));
         }
@@ -81,6 +124,16 @@ fn mount(
         .map_err(|e| format!("调用 mklink 失败：{}", e))?;
 
     if output.status.success() {
+        // 将链接记录写入本地文件，便于软件再次打开时查看和管理
+        let mut links = load_links()?;
+        // 避免重复记录同一本地路径
+        links.retain(|l| l.local_path != local_path);
+        links.push(LinkRecord {
+            local_path: local_path.clone(),
+            unc_path,
+        });
+        save_links(&links)?;
+
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     } else {
         let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -97,13 +150,13 @@ fn mount(
 /* -------------------------------------------------------------------------- */
 #[tauri::command]
 fn unmount(local_path: String) -> Result<String, String> {
-    let local = std::path::Path::new(&local_path);
+    let local = Path::new(&local_path);
 
     if !local.exists() {
         return Err(format!("{} 不存在，无需卸载", local_path));
     }
 
-    let metadata = std::fs::symlink_metadata(local)
+    let metadata = fs::symlink_metadata(local)
         .map_err(|e| format!("无法读取元数据：{}", e))?;
 
     if !metadata.file_type().is_symlink() {
@@ -114,9 +167,20 @@ fn unmount(local_path: String) -> Result<String, String> {
     }
 
     // remove_dir 对符号链接目录只删除链接本身，不删除远程目标
-    std::fs::remove_dir(local)
-        .map(|_| format!("已卸载：{}", local_path))
+    fs::remove_dir(local)
+        .map(|_| {
+            // 从记录文件中移除
+            let _ = remove_link_record(&local_path);
+            format!("已卸载：{}", local_path)
+        })
         .map_err(|e| format!("卸载失败：{}", e))
+}
+
+/// 从记录文件中移除指定本地路径的链接记录（内部使用，不卸载实际链接）
+fn remove_link_record(local_path: &str) -> Result<(), String> {
+    let mut links = load_links()?;
+    links.retain(|l| l.local_path != local_path);
+    save_links(&links)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -124,13 +188,13 @@ fn unmount(local_path: String) -> Result<String, String> {
 /* -------------------------------------------------------------------------- */
 #[tauri::command]
 fn check_link(local_path: String) -> Result<Option<String>, String> {
-    let local = std::path::Path::new(&local_path);
+    let local = Path::new(&local_path);
 
     if !local.exists() {
         return Ok(None);
     }
 
-    let metadata = std::fs::symlink_metadata(local)
+    let metadata = fs::symlink_metadata(local)
         .map_err(|e| format!("无法读取元数据：{}", e))?;
 
     if !metadata.file_type().is_symlink() {
@@ -138,10 +202,30 @@ fn check_link(local_path: String) -> Result<Option<String>, String> {
     }
 
     // 读取符号链接指向的目标
-    match std::fs::read_link(local) {
+    match fs::read_link(local) {
         Ok(target) => Ok(Some(target.display().to_string())),
         Err(e) => Err(format!("无法读取符号链接目标：{}", e)),
     }
+}
+
+/* -------------------------------------------------------------------------- */
+/*  获取所有已记录的链接列表                                                    */
+/* -------------------------------------------------------------------------- */
+#[tauri::command]
+fn get_links() -> Result<Vec<LinkRecord>, String> {
+    load_links()
+}
+
+/* -------------------------------------------------------------------------- */
+/*  删除指定的链接记录并卸载符号链接                                            */
+/* -------------------------------------------------------------------------- */
+#[tauri::command]
+fn remove_link(local_path: String) -> Result<String, String> {
+    // 先卸载实际的符号链接
+    let _ = unmount(local_path.clone())?;
+    // 再从记录中移除（unmount 内部已调用 remove_link_record，这里再调用一次也是幂等的）
+    let _ = remove_link_record(&local_path);
+    Ok(format!("已删除链接记录：{}", local_path))
 }
 
 /* -------------------------------------------------------------------------- */

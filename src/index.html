@@ -116,6 +116,42 @@
       color: #888;
       margin-top: 5px;
     }
+    .link-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid #e0e0e0;
+      background: #fff;
+    }
+    .link-item:last-child { border-bottom: none; }
+    .link-item .local-path {
+      flex: 1;
+      font-size: 13px;
+      color: #333;
+      word-break: break-all;
+    }
+    .link-item .unc-path {
+      flex: 1;
+      font-size: 12px;
+      color: #666;
+      margin-left: 12px;
+      word-break: break-all;
+      font-family: monospace;
+    }
+    .link-item .btn-remove {
+      padding: 6px 12px;
+      font-size: 12px;
+      background: #fdecea;
+      color: #c00000;
+      border: 1px solid #f5b7b1;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 10px;
+      white-space: nowrap;
+    }
+    .link-item .btn-remove:hover { background: #f5b7b1; color: #a80000; }
+    .link-item .btn-remove:disabled { opacity: 0.6; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -156,6 +192,17 @@
     </div>
 
     <div id="status"></div>
+
+    <!-- 已创建的链接列表 -->
+    <div class="field" style="margin-top: 26px;">
+      <label style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-weight: 600; font-size: 14px; color: #555;">已创建的链接</span>
+        <button class="btn" id="btnRefreshList" style="padding: 4px 10px; font-size: 13px;">刷新</button>
+      </label>
+      <div id="linkList" style="margin-top: 10px; max-height: 200px; overflow-y: auto; border: 1px solid #cfcfcf; border-radius: 6px; background: #fafafa;">
+        <div id="linkListEmpty" style="padding: 16px; text-align: center; color: #888; font-size: 13px;">暂无已创建的链接</div>
+      </div>
+    </div>
 
     <!-- 隐藏的原生文件夹选择输入（不依赖 tauri-plugin-dialog） -->
     <input type="file" webkitdirectory id="folderInput" style="display: none;" />

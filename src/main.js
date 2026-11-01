@@ -10,7 +10,10 @@ const chkSaveCred = $('chkSaveCred');
 const btnBrowse = $('btnBrowse');
 const btnMount = $('btnMount');
 const btnUnmount = $('btnUnmount');
+const btnRefreshList = $('btnRefreshList');
 const folderInput = $('folderInput');
+const linkList = $('linkList');
+const linkListEmpty = $('linkListEmpty');
 const status = $('status');
 
 function show(msg, kind) {
@@ -32,7 +35,7 @@ function setButtons(isLinked) {
   }
 }
 
-async function checkLink(lp) {
+const checkLink = async (lp) => {
   if (!lp) {
     setButtons(false);
     show('', 'ok');
@@ -51,6 +54,64 @@ async function checkLink(lp) {
     setButtons(false);
     show('检查链接状态失败：' + String(e), 'err');
   }
+};
+
+async function loadLinks() {
+  try {
+    const links = await invoke('get_links');
+    renderLinks(links);
+  } catch (e) {
+    show('加载链接列表失败：' + String(e), 'err');
+  }
+}
+
+function renderLinks(links) {
+  linkList.innerHTML = '';
+  if (!links || links.length === 0) {
+    linkListEmpty.style.display = 'block';
+    return;
+  }
+  linkListEmpty.style.display = 'none';
+  for (const link of links) {
+    const div = document.createElement('div');
+    div.className = 'link-item';
+    div.innerHTML = `
+      <div class="local-path" title="${link.local_path}">${escapeHtml(link.local_path)}</div>
+      <div class="unc-path" title="${link.unc_path}">${escapeHtml(link.unc_path)}</div>
+      <button class="btn-remove" data-path="${escapeAttr(link.local_path)}">取消链接</button>
+    `;
+    const btn = div.querySelector('.btn-remove');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = '处理中...';
+      try {
+        await invoke('remove_link', { localPath: link.local_path });
+        show('已删除链接：' + link.local_path, 'ok');
+        await loadLinks();
+        // 如果当前输入框就是这个路径，重置按钮状态
+        if (localPath.value.trim() === link.local_path) {
+          setButtons(false);
+          show('', 'ok');
+        }
+      } catch (e) {
+        show('删除链接失败：' + String(e), 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '取消链接';
+      }
+    });
+    linkList.appendChild(div);
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  return text.replace(/"/g, '&quot;');
 }
 
 function pickFolder() {
@@ -64,7 +125,6 @@ folderInput.addEventListener('change', (e) => {
     checkLink(path);
     show('', 'ok');
   }
-  // 重置 input 以便可以再次选择同一文件夹
   e.target.value = '';
 });
 
@@ -88,6 +148,7 @@ btnMount.addEventListener('click', async () => {
     });
     show('挂载成功：' + result, 'ok');
     await checkLink(lp);
+    await loadLinks();
   } catch (e) {
     show('挂载失败：' + String(e), 'err');
   } finally {
@@ -106,10 +167,25 @@ btnUnmount.addEventListener('click', async () => {
     show('卸载成功：' + result, 'ok');
     setButtons(false);
     show('', 'ok');
+    await loadLinks();
   } catch (e) {
     show('卸载失败：' + String(e), 'err');
   } finally {
     btnUnmount.disabled = false;
+  }
+});
+
+btnRefreshList.addEventListener('click', async () => {
+  btnRefreshList.disabled = true;
+  btnRefreshList.textContent = '刷新中...';
+  try {
+    await loadLinks();
+    show('链接列表已刷新', 'ok');
+  } catch (e) {
+    show('刷新失败：' + String(e), 'err');
+  } finally {
+    btnRefreshList.disabled = false;
+    btnRefreshList.textContent = '刷新';
   }
 });
 
@@ -123,7 +199,8 @@ localPath.addEventListener('input', () => {
   }, 300);
 });
 
-// 页面加载时检查当前本地路径状态
-window.addEventListener('DOMContentLoaded', () => {
+// 页面加载时检查当前本地路径状态并加载链接列表
+window.addEventListener('DOMContentLoaded', async () => {
   checkLink(localPath.value.trim());
+  await loadLinks();
 });
