@@ -17,7 +17,8 @@ smb-folder-mapper/
 ├── README.md
 ├── src/                       # 前端（极致轻量，无构建步骤）
 │   ├── index.html
-│   └── main.js
+│   ├── main.js
+│   └── vendor/                # vendored @tauri-apps/api（core.js），离线可用
 ├── src-tauri/                 # 后端 Rust（Tauri v2）
 │   ├── Cargo.toml
 │   ├── src/main.rs            # mount / unmount / 凭据管理器 命令
@@ -81,7 +82,7 @@ cd C:\workspace\smb-folder-mapper
 cargo tauri dev
 ```
 
-> 前端使用 `@tauri-apps/api`（通过 unpkg CDN 加载），开发时需联网。如需完全离线生产，请将 `src/index.html` 中的 `importmap` unpkg 地址替换为本地 vendored 的 `@tauri-apps/api/dist` 文件并相应调整。
+> 前端使用 `@tauri-apps/api`（已 vendored 到 `src/vendor/`，开发与生产都不依赖网络）。
 
 ### 打包发行版（本地）
 

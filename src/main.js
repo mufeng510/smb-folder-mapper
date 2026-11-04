@@ -11,7 +11,6 @@ const btnBrowse = $('btnBrowse');
 const btnMount = $('btnMount');
 const btnUnmount = $('btnUnmount');
 const btnRefreshList = $('btnRefreshList');
-const folderInput = $('folderInput');
 const linkList = $('linkList');
 const linkListEmpty = $('linkListEmpty');
 const status = $('status');
@@ -114,19 +113,18 @@ function escapeAttr(text) {
   return text.replace(/"/g, '&quot;');
 }
 
-function pickFolder() {
-  folderInput.click();
-}
-
-folderInput.addEventListener('change', (e) => {
-  const path = e.target.files?.[0]?.path;
-  if (path) {
-    localPath.value = path;
-    checkLink(path);
-    show('', 'ok');
+async function pickFolder() {
+  try {
+    const selected = await invoke('plugin:dialog|open', { options: { directory: true } });
+    if (typeof selected === 'string') {
+      localPath.value = selected;
+      checkLink(selected);
+      show('', 'ok');
+    }
+  } catch (e) {
+    show('打开文件夹选择对话框失败：' + String(e), 'err');
   }
-  e.target.value = '';
-});
+}
 
 btnBrowse.addEventListener('click', pickFolder);
 

@@ -204,14 +204,12 @@
       </div>
     </div>
 
-    <!-- 隐藏的原生文件夹选择输入（不依赖 tauri-plugin-dialog） -->
-    <input type="file" webkitdirectory id="folderInput" style="display: none;" />
   </div>
 
   <script type="importmap">
     {
       "imports": {
-        "@tauri-apps/api": "https://unpkg.com/@tauri-apps/api@2/dist/index.mjs"
+        "@tauri-apps/api": "./vendor/core.js"
       }
     }
   </script>

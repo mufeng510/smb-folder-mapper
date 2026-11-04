@@ -47,6 +47,7 @@ fn save_links(links: &[LinkRecord]) -> Result<(), String> {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             mount,
             unmount,
@@ -221,8 +222,11 @@ fn get_links() -> Result<Vec<LinkRecord>, String> {
 /* -------------------------------------------------------------------------- */
 #[tauri::command]
 fn remove_link(local_path: String) -> Result<String, String> {
-    // 先卸载实际的符号链接
-    let _ = unmount(local_path.clone())?;
+    // 先尝试卸载实际符号链接；链接可能已被外部删除，此时只清理记录
+    match unmount(local_path.clone()) {
+        Ok(_) => {}
+        Err(e) => eprintln!("remove_link: 卸载失败（继续清理记录）：{}", e),
+    }
     // 再从记录中移除（unmount 内部已调用 remove_link_record，这里再调用一次也是幂等的）
     let _ = remove_link_record(&local_path);
     Ok(format!("已删除链接记录：{}", local_path))
