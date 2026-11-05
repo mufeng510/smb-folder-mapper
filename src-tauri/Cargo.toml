@@ -1,14 +1,15 @@
 [package]
 name = "smb-folder-mapper"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
-description = "轻量级 SMB 文件夹目录符号链接映射工具（Tauri v2）"
+description = "Lightweight SMB folder directory symlink mapping tool (Tauri v2)"
 
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+encoding_rs = "0.8"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -61,6 +61,14 @@ fn main() {
         .expect("error while running tauri application");
 }
 
+/// 解码 cmd.exe 输出的字节：优先 UTF-8，否则按 GBK 解码（中文系统默认码页）
+fn decode_output(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => encoding_rs::GBK.decode(bytes).0.into_owned(),
+    }
+}
+
 /* -------------------------------------------------------------------------- */
 /*  挂载：将 UNC SMB 路径创建为本地目录符号链接（Directory Symbolic Link）     */
 /*  注意：mklink 是 cmd.exe 内置命令，必须通过 `cmd /c mklink /d` 调用         */
@@ -73,21 +81,27 @@ fn mount(
     username: Option<String>,
     password: Option<String>,
 ) -> Result<String, String> {
+    // 目录符号链接必须以管理员权限创建；manifest 声明 requireAdministrator 时应用会自动 UAC 提权，
+    // 这里兜底提示（例如直接从中等完整性进程调起或 manifest 未生效时）
+    if !is_admin() {
+        return Err(
+            "当前程序不是以管理员身份运行，无法创建目录符号链接。请关闭后右键“以管理员身份运行”再试。"
+                .to_string(),
+        );
+    }
+
     // 可选：将凭据写入 Windows 凭据管理器，供系统在重启后自动鉴权 SMB 共享
     if save_creds {
         if let (Some(user), Some(pass)) = (username, password) {
-            let target = format!("SMBFolderMapper:{}", unc_path);
+            let target = credential_target(&unc_path);
             let _ = save_credential(target, user, pass);
         }
     }
 
     let local = Path::new(&local_path);
 
-    // 校验本地路径
-    if local.exists() {
-        let metadata = fs::symlink_metadata(local)
-            .map_err(|e| format!("无法读取本地路径元数据：{}", e))?;
-
+    // 使用 symlink_metadata 识别任何已存在的文件/目录/链接（含死链接）
+    if let Ok(metadata) = fs::symlink_metadata(local) {
         if metadata.file_type().is_symlink() {
             return Err(format!("{} 已是符号链接，请先点击“卸载 / 断开链接”", local_path));
         }
@@ -135,9 +149,16 @@ fn mount(
         });
         save_links(&links)?;
 
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        Ok(decode_output(&output.stdout).trim().to_string())
     } else {
-        let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let err = {
+            let combined = format!(
+                "{} {}",
+                decode_output(&output.stderr).trim().to_string(),
+                decode_output(&output.stdout).trim().to_string()
+            );
+            combined.trim().to_string()
+        };
         Err(if err.is_empty() {
             "mklink 执行失败，可能未获得管理员权限或远程共享不可达".to_string()
         } else {
@@ -153,12 +174,10 @@ fn mount(
 fn unmount(local_path: String) -> Result<String, String> {
     let local = Path::new(&local_path);
 
-    if !local.exists() {
-        return Err(format!("{} 不存在，无需卸载", local_path));
-    }
-
+    // 使用 symlink_metadata：它不跟随链接，可识别目标不可达的“死链接”
+    // （Path::exists 会跟随链接解析目标，死链接会被误判为不存在）
     let metadata = fs::symlink_metadata(local)
-        .map_err(|e| format!("无法读取元数据：{}", e))?;
+        .map_err(|_| format!("{} 不存在，无需卸载", local_path))?;
 
     if !metadata.file_type().is_symlink() {
         return Err(format!(
@@ -191,12 +210,11 @@ fn remove_link_record(local_path: &str) -> Result<(), String> {
 fn check_link(local_path: String) -> Result<Option<String>, String> {
     let local = Path::new(&local_path);
 
-    if !local.exists() {
-        return Ok(None);
-    }
-
-    let metadata = fs::symlink_metadata(local)
-        .map_err(|e| format!("无法读取元数据：{}", e))?;
+    // 不跟随链接：死链接（目标不可达）也应能被识别
+    let metadata = match fs::symlink_metadata(local) {
+        Ok(m) => m,
+        Err(_) => return Ok(None),
+    };
 
     if !metadata.file_type().is_symlink() {
         return Ok(None);
@@ -222,14 +240,24 @@ fn get_links() -> Result<Vec<LinkRecord>, String> {
 /* -------------------------------------------------------------------------- */
 #[tauri::command]
 fn remove_link(local_path: String) -> Result<String, String> {
-    // 先尝试卸载实际符号链接；链接可能已被外部删除，此时只清理记录
-    match unmount(local_path.clone()) {
-        Ok(_) => {}
-        Err(e) => eprintln!("remove_link: 卸载失败（继续清理记录）：{}", e),
+    // 路径（含目标不可达的死链接）存在时执行卸载；卸载失败则保留记录并返回错误
+    // 路径已被外部删除时，仅清理记录
+    if fs::symlink_metadata(&local_path).is_ok() {
+        unmount(local_path.clone())?;
+    } else {
+        let _ = remove_link_record(&local_path);
     }
-    // 再从记录中移除（unmount 内部已调用 remove_link_record，这里再调用一次也是幂等的）
-    let _ = remove_link_record(&local_path);
     Ok(format!("已删除链接记录：{}", local_path))
+}
+
+#[link(name = "shell32", kind = "dylib")]
+extern "system" {
+    fn IsUserAnAdmin() -> i32;
+}
+
+/// 当前进程是否以管理员权限运行（mklink /d 需要）
+fn is_admin() -> bool {
+    unsafe { IsUserAnAdmin() != 0 }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -266,6 +294,17 @@ struct CREDENTIALW {
     attributes: *mut c_void,
     target_alias: *mut u16,
     username: *mut u16,
+}
+
+/// 计算 SMB 共享的凭据目标名。Windows 只会按 `服务器` 或 `服务器\共享` 这样的目标名
+/// 匹配通用凭据用于 SMB 鉴权；使用自定义前缀（如 `SMBFolderMapper:...`）则永远匹配不上。
+fn credential_target(unc_path: &str) -> String {
+    let trimmed = unc_path.trim_start_matches('\\');
+    let mut parts = trimmed.split('\\').filter(|p| !p.is_empty());
+    match (parts.next(), parts.next()) {
+        (Some(server), Some(share)) => format!("{}\\{}", server, share),
+        _ => format!("SMBFolderMapper:{}", unc_path),
+    }
 }
 
 /// 将 Rust 字符串转换为以空结尾的 UTF-16 宽字符数组
